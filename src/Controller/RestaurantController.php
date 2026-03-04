@@ -51,9 +51,9 @@ class RestaurantController extends AbstractController
 
         $restaurant = new Restaurant();
         $restaurant->setName($data['name']);
-        $restaurant->setSlug($data['slug']);
+        $restaurant->setSlug(strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $restaurant->getName()))));
         $restaurant->setAddress($data['address']);
-        $restaurant->setPrimaryColor($data['primaryColor']);
+        $restaurant->setPrimaryColor($data['primaryColor'] ?? '#ffffff'); // valeur par défaut si non fournie
         $restaurant->setIsActive(true);
         $restaurant->setCreatedAt(new \DateTime());
         $restaurant->setUpdateAt(new \DateTime());

@@ -25,6 +25,7 @@ class CategoryController extends AbstractController
         $this->restaurantRepo = $restaurantRepo;
     }
 
+    // LISTE toutes les catégories
     #[Route('', name: 'list', methods: ['GET'])]
     public function list(): JsonResponse
     {
@@ -34,32 +35,47 @@ class CategoryController extends AbstractController
             $data[] = [
                 'id' => $c->getId(),
                 'name' => $c->getName(),
-                'restaurantId' => $c->getRestaurant()->getId()
+                'restaurantId' => $c->getRestaurant()?->getId(), // sécurité si restaurant null
             ];
         }
         return $this->json($data);
     }
 
+    // CRÉER une catégorie
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        $restaurant = $this->restaurantRepo->find($data['restaurantId']);
+        // sécuriser les clés
+        $restaurantId = $data['restaurantId'] ?? null;
+        $name = $data['name'] ?? null;
+
+        if (!$restaurantId || !$name) {
+            return $this->json(['message' => 'Champs "name" et "restaurantId" requis'], 400);
+        }
+
+        $restaurant = $this->restaurantRepo->find($restaurantId);
         if (!$restaurant) {
             return $this->json(['message' => 'Restaurant non trouvé'], 404);
         }
 
         $category = new Category();
-        $category->setName($data['name']);
+        $category->setName($name);
         $category->setRestaurant($restaurant);
 
         $this->em->persist($category);
         $this->em->flush();
 
-        return $this->json(['message' => 'Catégorie créée', 'id' => $category->getId()]);
+        return $this->json([
+            'message' => 'Catégorie créée',
+            'id' => $category->getId(),
+            'name' => $category->getName(),
+            'restaurantId' => $category->getRestaurant()->getId()
+        ]);
     }
 
+    // AFFICHER une catégorie
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(int $id): JsonResponse
     {
@@ -71,10 +87,11 @@ class CategoryController extends AbstractController
         return $this->json([
             'id' => $category->getId(),
             'name' => $category->getName(),
-            'restaurantId' => $category->getRestaurant()->getId()
+            'restaurantId' => $category->getRestaurant()?->getId(),
         ]);
     }
 
+    // MODIFIER une catégorie
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
     public function update(Request $request, int $id): JsonResponse
     {
@@ -84,13 +101,28 @@ class CategoryController extends AbstractController
         }
 
         $data = json_decode($request->getContent(), true);
-        $category->setName($data['name'] ?? $category->getName());
+
+        // mise à jour du nom
+        if (isset($data['name'])) {
+            $category->setName($data['name']);
+        }
+
+        // mise à jour du restaurant si fourni
+        if (isset($data['restaurantId'])) {
+            $restaurant = $this->restaurantRepo->find($data['restaurantId']);
+            if ($restaurant) {
+                $category->setRestaurant($restaurant);
+            } else {
+                return $this->json(['message' => 'Restaurant non trouvé'], 404);
+            }
+        }
 
         $this->em->flush();
 
         return $this->json(['message' => 'Catégorie mise à jour']);
     }
 
+    // SUPPRIMER une catégorie
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(int $id): JsonResponse
     {
