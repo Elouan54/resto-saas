@@ -20,8 +20,12 @@ class DishController extends AbstractController
     private $categoryRepo;
     private $restaurantRepo;
 
-    public function __construct(EntityManagerInterface $em, DishRepository $repo, CategoryRepository $categoryRepo, RestaurantRepository $restaurantRepo)
-    {
+    public function __construct(
+        EntityManagerInterface $em,
+        DishRepository $repo,
+        CategoryRepository $categoryRepo,
+        RestaurantRepository $restaurantRepo
+    ) {
         $this->em = $em;
         $this->repo = $repo;
         $this->categoryRepo = $categoryRepo;
@@ -31,8 +35,17 @@ class DishController extends AbstractController
     #[Route('', name: 'list', methods: ['GET'])]
     public function list(): JsonResponse
     {
-        $dishes = $this->repo->findAll();
+        $user = $this->getUser();
+
+        $dishes = $this->repo->createQueryBuilder('d')
+            ->join('d.restaurant', 'r')
+            ->where('r.owner = :owner')
+            ->setParameter('owner', $user)
+            ->getQuery()
+            ->getResult();
+
         $data = [];
+
         foreach ($dishes as $d) {
             $data[] = [
                 'id' => $d->getId(),
@@ -44,6 +57,7 @@ class DishController extends AbstractController
                 'restaurantId' => $d->getRestaurant()->getId()
             ];
         }
+
         return $this->json($data);
     }
 
@@ -53,10 +67,16 @@ class DishController extends AbstractController
         $data = json_decode($request->getContent(), true);
 
         $restaurant = $this->restaurantRepo->find($data['restaurantId']);
-        if (!$restaurant) return $this->json(['message'=>'Restaurant non trouvé'], 404);
+        if (!$restaurant) {
+            return $this->json(['message' => 'Restaurant non trouvé'], 404);
+        }
+
+        $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $restaurant);
 
         $category = $this->categoryRepo->find($data['categoryId']);
-        if (!$category) return $this->json(['message'=>'Catégorie non trouvée'], 404);
+        if (!$category) {
+            return $this->json(['message' => 'Catégorie non trouvée'], 404);
+        }
 
         $dish = new Dish();
         $dish->setName($data['name']);
@@ -70,24 +90,32 @@ class DishController extends AbstractController
         $this->em->persist($dish);
         $this->em->flush();
 
-        return $this->json(['message'=>'Plat créé','id'=>$dish->getId()]);
+        return $this->json([
+            'message' => 'Plat créé',
+            'id' => $dish->getId()
+        ]);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(int $id): JsonResponse
     {
         $dish = $this->repo->find($id);
-        if (!$dish) return $this->json(['message'=>'Plat non trouvé'], 404);
+
+        if (!$dish) {
+            return $this->json(['message' => 'Plat non trouvé'], 404);
+        }
+
+        $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $dish->getRestaurant());
 
         return $this->json([
-            'id'=>$dish->getId(),
-            'name'=>$dish->getName(),
-            'description'=>$dish->getDescription(),
-            'price'=>$dish->getPrice(),
-            'isAvailable'=>$dish->isAvailable(),
-            'categoryId'=>$dish->getCategory()->getId(),
-            'restaurantId'=>$dish->getRestaurant()->getId(),
-            'image'=>$dish->getImage()
+            'id' => $dish->getId(),
+            'name' => $dish->getName(),
+            'description' => $dish->getDescription(),
+            'price' => $dish->getPrice(),
+            'isAvailable' => $dish->isAvailable(),
+            'categoryId' => $dish->getCategory()->getId(),
+            'restaurantId' => $dish->getRestaurant()->getId(),
+            'image' => $dish->getImage()
         ]);
     }
 
@@ -95,7 +123,12 @@ class DishController extends AbstractController
     public function update(Request $request, int $id): JsonResponse
     {
         $dish = $this->repo->find($id);
-        if (!$dish) return $this->json(['message'=>'Plat non trouvé'], 404);
+
+        if (!$dish) {
+            return $this->json(['message' => 'Plat non trouvé'], 404);
+        }
+
+        $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $dish->getRestaurant());
 
         $data = json_decode($request->getContent(), true);
 
@@ -105,25 +138,32 @@ class DishController extends AbstractController
         $dish->setIsAvailable($data['isAvailable'] ?? $dish->isAvailable());
         $dish->setImage($data['image'] ?? $dish->getImage());
 
-        if(isset($data['categoryId'])){
+        if (isset($data['categoryId'])) {
             $category = $this->categoryRepo->find($data['categoryId']);
-            if($category) $dish->setCategory($category);
+            if ($category) {
+                $dish->setCategory($category);
+            }
         }
 
         $this->em->flush();
 
-        return $this->json(['message'=>'Plat mis à jour']);
+        return $this->json(['message' => 'Plat mis à jour']);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(int $id): JsonResponse
     {
         $dish = $this->repo->find($id);
-        if (!$dish) return $this->json(['message'=>'Plat non trouvé'], 404);
+
+        if (!$dish) {
+            return $this->json(['message' => 'Plat non trouvé'], 404);
+        }
+
+        $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $dish->getRestaurant());
 
         $this->em->remove($dish);
         $this->em->flush();
 
-        return $this->json(['message'=>'Plat supprimé']);
+        return $this->json(['message' => 'Plat supprimé']);
     }
 }

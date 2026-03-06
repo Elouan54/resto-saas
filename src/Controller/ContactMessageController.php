@@ -18,8 +18,11 @@ class ContactMessageController extends AbstractController
     private $repo;
     private $restaurantRepo;
 
-    public function __construct(EntityManagerInterface $em, ContactMessageRepository $repo, RestaurantRepository $restaurantRepo)
-    {
+    public function __construct(
+        EntityManagerInterface $em,
+        ContactMessageRepository $repo,
+        RestaurantRepository $restaurantRepo
+    ){
         $this->em = $em;
         $this->repo = $repo;
         $this->restaurantRepo = $restaurantRepo;
@@ -28,8 +31,18 @@ class ContactMessageController extends AbstractController
     #[Route('', name:'list', methods:['GET'])]
     public function list(): JsonResponse
     {
-        $messages = $this->repo->findAll();
+        $user = $this->getUser();
+
+        $messages = $this->repo->createQueryBuilder('m')
+            ->join('m.restaurant','r')
+            ->where('r.owner = :owner')
+            ->setParameter('owner',$user)
+            ->orderBy('m.createdAt','DESC')
+            ->getQuery()
+            ->getResult();
+
         $data = [];
+
         foreach($messages as $m){
             $data[] = [
                 'id'=>$m->getId(),
@@ -40,6 +53,7 @@ class ContactMessageController extends AbstractController
                 'restaurantId'=>$m->getRestaurant()->getId()
             ];
         }
+
         return $this->json($data);
     }
 
@@ -47,8 +61,12 @@ class ContactMessageController extends AbstractController
     public function create(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
+
         $restaurant = $this->restaurantRepo->find($data['restaurantId']);
-        if(!$restaurant) return $this->json(['message'=>'Restaurant non trouvé'],404);
+
+        if(!$restaurant){
+            return $this->json(['message'=>'Restaurant non trouvé'],404);
+        }
 
         $msg = new ContactMessage();
         $msg->setName($data['name']);
@@ -60,14 +78,25 @@ class ContactMessageController extends AbstractController
         $this->em->persist($msg);
         $this->em->flush();
 
-        return $this->json(['message'=>'Message créé','id'=>$msg->getId()]);
+        return $this->json([
+            'message'=>'Message créé',
+            'id'=>$msg->getId()
+        ]);
     }
 
     #[Route('/{id}', name:'show', methods:['GET'])]
     public function show(int $id): JsonResponse
     {
         $msg = $this->repo->find($id);
-        if(!$msg) return $this->json(['message'=>'Message non trouvé'],404);
+
+        if(!$msg){
+            return $this->json(['message'=>'Message non trouvé'],404);
+        }
+
+        $this->denyAccessUnlessGranted(
+            'RESTAURANT_ACCESS',
+            $msg->getRestaurant()
+        );
 
         return $this->json([
             'id'=>$msg->getId(),
@@ -83,10 +112,19 @@ class ContactMessageController extends AbstractController
     public function delete(int $id): JsonResponse
     {
         $msg = $this->repo->find($id);
-        if(!$msg) return $this->json(['message'=>'Message non trouvé'],404);
+
+        if(!$msg){
+            return $this->json(['message'=>'Message non trouvé'],404);
+        }
+
+        $this->denyAccessUnlessGranted(
+            'RESTAURANT_ACCESS',
+            $msg->getRestaurant()
+        );
 
         $this->em->remove($msg);
         $this->em->flush();
+
         return $this->json(['message'=>'Message supprimé']);
     }
 }

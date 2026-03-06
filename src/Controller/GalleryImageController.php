@@ -28,24 +28,50 @@ class GalleryImageController extends AbstractController
     #[Route('', name:'list', methods:['GET'])]
     public function list(): JsonResponse
     {
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message' => 'Non authentifié'], 401);
+        }
+
         $images = $this->repo->findAll();
+
         $data = [];
+
         foreach($images as $img){
+
+            if ($img->getRestaurant()->getOwner() !== $user) {
+                continue;
+            }
+
             $data[] = [
                 'id'=>$img->getId(),
                 'imagePath'=>$img->getImagePath(),
                 'restaurantId'=>$img->getRestaurant()->getId()
             ];
         }
+
         return $this->json($data);
     }
 
     #[Route('', name:'create', methods:['POST'])]
     public function create(Request $request): JsonResponse
     {
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message' => 'Non authentifié'], 401);
+        }
+
         $data = json_decode($request->getContent(), true);
+
         $restaurant = $this->restaurantRepo->find($data['restaurantId']);
-        if(!$restaurant) return $this->json(['message'=>'Restaurant non trouvé'],404);
+
+        if(!$restaurant){
+            return $this->json(['message'=>'Restaurant non trouvé'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_EDIT', $restaurant);
 
         $img = new GalleryImage();
         $img->setImagePath($data['imagePath']);
@@ -54,14 +80,22 @@ class GalleryImageController extends AbstractController
         $this->em->persist($img);
         $this->em->flush();
 
-        return $this->json(['message'=>'Image ajoutée','id'=>$img->getId()]);
+        return $this->json([
+            'message'=>'Image ajoutée',
+            'id'=>$img->getId()
+        ]);
     }
 
     #[Route('/{id}', name:'show', methods:['GET'])]
     public function show(int $id): JsonResponse
     {
         $img = $this->repo->find($id);
-        if(!$img) return $this->json(['message'=>'Image non trouvée'],404);
+
+        if(!$img){
+            return $this->json(['message'=>'Image non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $img->getRestaurant());
 
         return $this->json([
             'id'=>$img->getId(),
@@ -74,12 +108,19 @@ class GalleryImageController extends AbstractController
     public function update(Request $request, int $id): JsonResponse
     {
         $img = $this->repo->find($id);
-        if(!$img) return $this->json(['message'=>'Image non trouvée'],404);
+
+        if(!$img){
+            return $this->json(['message'=>'Image non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_EDIT', $img->getRestaurant());
 
         $data = json_decode($request->getContent(), true);
+
         $img->setImagePath($data['imagePath'] ?? $img->getImagePath());
 
         $this->em->flush();
+
         return $this->json(['message'=>'Image mise à jour']);
     }
 
@@ -87,10 +128,16 @@ class GalleryImageController extends AbstractController
     public function delete(int $id): JsonResponse
     {
         $img = $this->repo->find($id);
-        if(!$img) return $this->json(['message'=>'Image non trouvée'],404);
+
+        if(!$img){
+            return $this->json(['message'=>'Image non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_DELETE', $img->getRestaurant());
 
         $this->em->remove($img);
         $this->em->flush();
+
         return $this->json(['message'=>'Image supprimée']);
     }
 }

@@ -26,7 +26,16 @@ class RestaurantController extends AbstractController
     #[Route('', name: 'list', methods: ['GET'])]
     public function list(): JsonResponse
     {
-        $restaurants = $this->repo->findAll();
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $restaurants = $this->repo->findBy([
+            'owner' => $user
+        ]);
+
         $data = [];
 
         foreach ($restaurants as $r) {
@@ -47,21 +56,31 @@ class RestaurantController extends AbstractController
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message' => 'Non authentifié'], 401);
+        }
+
         $data = json_decode($request->getContent(), true);
 
         $restaurant = new Restaurant();
         $restaurant->setName($data['name']);
         $restaurant->setSlug(strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $restaurant->getName()))));
         $restaurant->setAddress($data['address']);
-        $restaurant->setPrimaryColor($data['primaryColor'] ?? '#ffffff'); // valeur par défaut si non fournie
+        $restaurant->setPrimaryColor($data['primaryColor'] ?? '#ffffff');
         $restaurant->setIsActive(true);
         $restaurant->setCreatedAt(new \DateTime());
         $restaurant->setUpdateAt(new \DateTime());
+        $restaurant->setOwner($user); // IMPORTANT
 
         $this->em->persist($restaurant);
         $this->em->flush();
 
-        return $this->json(['message' => 'Restaurant créé', 'id' => $restaurant->getId()]);
+        return $this->json([
+            'message' => 'Restaurant créé',
+            'id' => $restaurant->getId()
+        ]);
     }
 
     // AFFICHER un restaurant
@@ -69,10 +88,12 @@ class RestaurantController extends AbstractController
     public function show(int $id): JsonResponse
     {
         $restaurant = $this->repo->find($id);
+        $user = $this->getUser();
 
-        if (!$restaurant) {
-            return $this->json(['message' => 'Restaurant non trouvé'], 404);
-        }
+        $restaurant = $this->repo->find($id);
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $restaurant);
+
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $restaurant);
 
         $data = [
             'id' => $restaurant->getId(),
@@ -92,9 +113,10 @@ class RestaurantController extends AbstractController
     {
         $restaurant = $this->repo->find($id);
 
-        if (!$restaurant) {
-            return $this->json(['message' => 'Restaurant non trouvé'], 404);
-        }
+        $restaurant = $this->repo->find($id);
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $restaurant);
+
+        $this->denyAccessUnlessGranted('RESOURCE_EDIT', $restaurant);
 
         $data = json_decode($request->getContent(), true);
 
@@ -115,9 +137,10 @@ class RestaurantController extends AbstractController
     {
         $restaurant = $this->repo->find($id);
 
-        if (!$restaurant) {
-            return $this->json(['message' => 'Restaurant non trouvé'], 404);
-        }
+        $restaurant = $this->repo->find($id);
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $restaurant);
+
+        $this->denyAccessUnlessGranted('RESOURCE_DELETE', $restaurant);
 
         $this->em->remove($restaurant);
         $this->em->flush();

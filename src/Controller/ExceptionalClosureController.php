@@ -28,9 +28,21 @@ class ExceptionalClosureController extends AbstractController
     #[Route('', name:'list', methods:['GET'])]
     public function list(): JsonResponse
     {
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message'=>'Non authentifié'],401);
+        }
+
         $closures = $this->repo->findAll();
         $data = [];
+
         foreach($closures as $c){
+
+            if($c->getRestaurant()->getOwner() !== $user){
+                continue;
+            }
+
             $data[] = [
                 'id'=>$c->getId(),
                 'date'=>$c->getDate()->format('Y-m-d'),
@@ -38,15 +50,28 @@ class ExceptionalClosureController extends AbstractController
                 'restaurantId'=>$c->getRestaurant()->getId()
             ];
         }
+
         return $this->json($data);
     }
 
     #[Route('', name:'create', methods:['POST'])]
     public function create(Request $request): JsonResponse
     {
+        $user = $this->getUser();
+
+        if (!$user) {
+            return $this->json(['message'=>'Non authentifié'],401);
+        }
+
         $data = json_decode($request->getContent(), true);
+
         $restaurant = $this->restaurantRepo->find($data['restaurantId']);
-        if(!$restaurant) return $this->json(['message'=>'Restaurant non trouvé'],404);
+
+        if(!$restaurant){
+            return $this->json(['message'=>'Restaurant non trouvé'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_EDIT', $restaurant);
 
         $ec = new ExceptionalClosure();
         $ec->setDate(new \DateTime($data['date']));
@@ -56,14 +81,22 @@ class ExceptionalClosureController extends AbstractController
         $this->em->persist($ec);
         $this->em->flush();
 
-        return $this->json(['message'=>'Fermeture ajoutée','id'=>$ec->getId()]);
+        return $this->json([
+            'message'=>'Fermeture ajoutée',
+            'id'=>$ec->getId()
+        ]);
     }
 
     #[Route('/{id}', name:'show', methods:['GET'])]
     public function show(int $id): JsonResponse
     {
         $ec = $this->repo->find($id);
-        if(!$ec) return $this->json(['message'=>'Fermeture non trouvée'],404);
+
+        if(!$ec){
+            return $this->json(['message'=>'Fermeture non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_VIEW', $ec->getRestaurant());
 
         return $this->json([
             'id'=>$ec->getId(),
@@ -77,13 +110,23 @@ class ExceptionalClosureController extends AbstractController
     public function update(Request $request, int $id): JsonResponse
     {
         $ec = $this->repo->find($id);
-        if(!$ec) return $this->json(['message'=>'Fermeture non trouvée'],404);
+
+        if(!$ec){
+            return $this->json(['message'=>'Fermeture non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_EDIT', $ec->getRestaurant());
 
         $data = json_decode($request->getContent(), true);
-        if(isset($data['date'])) $ec->setDate(new \DateTime($data['date']));
+
+        if(isset($data['date'])){
+            $ec->setDate(new \DateTime($data['date']));
+        }
+
         $ec->setReason($data['reason'] ?? $ec->getReason());
 
         $this->em->flush();
+
         return $this->json(['message'=>'Fermeture mise à jour']);
     }
 
@@ -91,10 +134,16 @@ class ExceptionalClosureController extends AbstractController
     public function delete(int $id): JsonResponse
     {
         $ec = $this->repo->find($id);
-        if(!$ec) return $this->json(['message'=>'Fermeture non trouvée'],404);
+
+        if(!$ec){
+            return $this->json(['message'=>'Fermeture non trouvée'],404);
+        }
+
+        $this->denyAccessUnlessGranted('RESOURCE_DELETE', $ec->getRestaurant());
 
         $this->em->remove($ec);
         $this->em->flush();
+
         return $this->json(['message'=>'Fermeture supprimée']);
     }
 }
