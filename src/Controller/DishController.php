@@ -11,6 +11,8 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use App\Service\FileUploader;
 
 #[Route('/api/dishes', name: 'api_dish_')]
 class DishController extends AbstractController
@@ -19,17 +21,20 @@ class DishController extends AbstractController
     private $repo;
     private $categoryRepo;
     private $restaurantRepo;
+    private FileUploader $fileUploader;
 
     public function __construct(
         EntityManagerInterface $em,
         DishRepository $repo,
         CategoryRepository $categoryRepo,
-        RestaurantRepository $restaurantRepo
+        RestaurantRepository $restaurantRepo,
+        FileUploader $fileUploader
     ) {
         $this->em = $em;
         $this->repo = $repo;
         $this->categoryRepo = $categoryRepo;
         $this->restaurantRepo = $restaurantRepo;
+        $this->fileUploader = $fileUploader;
     }
 
     #[Route('', name: 'list', methods: ['GET'])]
@@ -64,35 +69,50 @@ class DishController extends AbstractController
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        // Récupération des champs depuis multipart/form-data
+        $name = $request->request->get('name');
+        $description = $request->request->get('description');
+        $price = (float) $request->request->get('price');
+        $isAvailable = $request->request->get('isAvailable') ?? true;
+        $categoryId = $request->request->get('categoryId');
+        $restaurantId = $request->request->get('restaurantId');
 
-        $restaurant = $this->restaurantRepo->find($data['restaurantId']);
+        // Vérification restaurant
+        $restaurant = $this->restaurantRepo->find($restaurantId);
         if (!$restaurant) {
             return $this->json(['message' => 'Restaurant non trouvé'], 404);
         }
-
         $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $restaurant);
 
-        $category = $this->categoryRepo->find($data['categoryId']);
+        // Vérification catégorie
+        $category = $this->categoryRepo->find($categoryId);
         if (!$category) {
             return $this->json(['message' => 'Catégorie non trouvée'], 404);
         }
 
+        // Création plat
         $dish = new Dish();
-        $dish->setName($data['name']);
-        $dish->setDescription($data['description'] ?? null);
-        $dish->setPrice($data['price']);
-        $dish->setIsAvailable($data['isAvailable'] ?? true);
+        $dish->setName($name);
+        $dish->setDescription($description);
+        $dish->setPrice($price);
+        $dish->setIsAvailable($isAvailable);
         $dish->setCategory($category);
         $dish->setRestaurant($restaurant);
-        $dish->setImage($data['image'] ?? null);
+
+        // Upload image si fournie
+        /** @var UploadedFile $file */
+        $file = $request->files->get('image');
+        if ($file) {
+            $fileName = $this->fileUploader->upload($file);
+            $dish->setImage('/uploads/dishes/' . $fileName);
+        }
 
         $this->em->persist($dish);
         $this->em->flush();
 
         return $this->json([
             'message' => 'Plat créé',
-            'id' => $dish->getId()
+            'id' => $dish->getId(),
         ]);
     }
 
@@ -123,26 +143,36 @@ class DishController extends AbstractController
     public function update(Request $request, int $id): JsonResponse
     {
         $dish = $this->repo->find($id);
-
         if (!$dish) {
             return $this->json(['message' => 'Plat non trouvé'], 404);
         }
 
         $this->denyAccessUnlessGranted('RESTAURANT_ACCESS', $dish->getRestaurant());
 
-        $data = json_decode($request->getContent(), true);
+        // Récupération champs multipart/form-data
+        $name = $request->request->get('name');
+        $description = $request->request->get('description');
+        $price = $request->request->get('price');
+        $isAvailable = $request->request->get('isAvailable');
+        $categoryId = $request->request->get('categoryId');
 
-        $dish->setName($data['name'] ?? $dish->getName());
-        $dish->setDescription($data['description'] ?? $dish->getDescription());
-        $dish->setPrice($data['price'] ?? $dish->getPrice());
-        $dish->setIsAvailable($data['isAvailable'] ?? $dish->isAvailable());
-        $dish->setImage($data['image'] ?? $dish->getImage());
+        if ($name) $dish->setName($name);
+        if ($description) $dish->setDescription($description);
+        if ($price !== null) $dish->setPrice((float) $price);
+        if ($isAvailable !== null) $dish->setIsAvailable($isAvailable);
 
-        if (isset($data['categoryId'])) {
-            $category = $this->categoryRepo->find($data['categoryId']);
+        if ($categoryId) {
+            $category = $this->categoryRepo->find($categoryId);
             if ($category) {
                 $dish->setCategory($category);
             }
+        }
+
+        /** @var UploadedFile $file */
+        $file = $request->files->get('image');
+        if ($file) {
+            $fileName = $this->fileUploader->upload($file);
+            $dish->setImage('/uploads/dishes/' . $fileName);
         }
 
         $this->em->flush();
