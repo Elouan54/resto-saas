@@ -42,12 +42,25 @@ class DishController extends AbstractController
     {
         $user = $this->getUser();
 
+        $page = max(1, (int) $request->query->get('page', 1));
+        $limit = max(1, (int) $request->query->get('limit', 10));
+
         $dishes = $this->repo->createQueryBuilder('d')
             ->join('d.restaurant', 'r')
             ->where('r.owner = :owner')
             ->setParameter('owner', $user)
+            ->setFirstResult(($page - 1) * $limit)
+            ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+
+        $total = $this->repo->createQueryBuilder('d')
+            ->select('COUNT(d.id)')
+            ->join('d.restaurant', 'r')
+            ->where('r.owner = :owner')
+            ->setParameter('owner', $this->getUser())
+            ->getQuery()
+            ->getSingleScalarResult();
 
         $data = [];
 
@@ -63,7 +76,13 @@ class DishController extends AbstractController
             ];
         }
 
-        return $this->json($data);
+        return $this->json([
+            'page' => $page,
+            'limit' => $limit,
+            'total' => (int)$total,
+            'totalPages' => ceil($total / $limit),
+            'data' => $data
+        ]);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]

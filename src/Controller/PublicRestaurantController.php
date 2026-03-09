@@ -12,15 +12,16 @@ class PublicRestaurantController extends AbstractController
     #[Route('/api/public/restaurants', methods:['GET'])]
     public function list(RestaurantRepository $repo): JsonResponse
     {
-        $restaurants = $repo->findAll();
+        $restaurants = $repo->findBy(['isActive' => true]);
 
         $data = [];
 
         foreach ($restaurants as $r) {
-            $data[] = [
-                'id' => $r->getId(),
-                'name' => $r->getName(),
-                'slug' => $r->getSlug()
+            $data = [
+                'name'=>$restaurant->getName(),
+                'slug'=>$restaurant->getSlug(),
+                'image'=>$restaurant->getImage(),
+                'categories'=>[]
             ];
         }
 
@@ -52,11 +53,16 @@ class PublicRestaurantController extends AbstractController
 
             foreach($category->getDishes() as $dish){
 
+                if(!$dish->isAvailable()){
+                    continue;
+                }
+
                 $cat['dishes'][] = [
                     'id'=>$dish->getId(),
                     'name'=>$dish->getName(),
                     'price'=>$dish->getPrice(),
-                    'description'=>$dish->getDescription()
+                    'description'=>$dish->getDescription(),
+                    'image'=>$dish->getImage()
                 ];
 
             }

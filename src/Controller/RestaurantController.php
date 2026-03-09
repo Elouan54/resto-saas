@@ -97,6 +97,49 @@ class RestaurantController extends AbstractController
         return $this->json(['message' => 'Restaurant créé', 'id' => $restaurant->getId()]);
     }
 
+    //afficher restaurants 
+    #[Route('/public', name: 'public_list', methods: ['GET'])]
+    public function publicList(Request $request): JsonResponse
+    {
+        $page = max(1, (int) $request->query->get('page', 1));
+        $limit = max(1, (int) $request->query->get('limit', 10));
+
+        $qb = $this->repo->createQueryBuilder('r')
+            ->where('r.isActive = :active')
+            ->setParameter('active', true)
+            ->setFirstResult(($page - 1) * $limit)
+            ->setMaxResults($limit);
+
+        $restaurants = $qb->getQuery()->getResult();
+
+        $total = $this->repo->createQueryBuilder('r')
+            ->select('COUNT(r.id)')
+            ->where('r.isActive = :active')
+            ->setParameter('active', true)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        $data = [];
+
+        foreach ($restaurants as $r) {
+            $data[] = [
+                'id' => $r->getId(),
+                'name' => $r->getName(),
+                'slug' => $r->getSlug(),
+                'address' => $r->getAddress(),
+                'image' => $r->getImage(),
+            ];
+        }
+
+        return $this->json([
+            'page' => $page,
+            'limit' => $limit,
+            'total' => (int)$total,
+            'totalPages' => ceil($total / $limit),
+            'data' => $data
+        ]);
+    }
+
     // AFFICHER un restaurant
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(int $id): JsonResponse
