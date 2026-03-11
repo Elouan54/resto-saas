@@ -50,7 +50,8 @@ class RestaurantController extends AbstractController
                 'slug' => $r->getSlug(),
                 'address' => $r->getAddress(),
                 'isActive' => $r->isActive(),
-                'image' => $r->getImage(),
+                'bannerImage' => $r->getBannerImage(),
+                'logo' => $r->getLogo(),
                 'createdAt' => $r->getCreatedAt()->format('Y-m-d H:i:s')
             ];
         }
@@ -63,12 +64,20 @@ class RestaurantController extends AbstractController
     public function create(Request $request): JsonResponse
     {
         $user = $this->getUser();
-        if (!$user) return $this->json(['message' => 'Non authentifié'], 401);
+        if (!$user) {
+            return $this->json(['message' => 'Non authentifié'], 401);
+        }
 
-        // Récupération champs multipart/form-data
-        $name = $request->request->get('name');
-        $address = $request->request->get('address');
-        $primaryColor = $request->request->get('primaryColor') ?? '#ffffff';
+        // Support JSON
+        $data = json_decode($request->getContent(), true) ?? [];
+
+        $name = $data['name'] ?? $request->request->get('name');
+        $address = $data['address'] ?? $request->request->get('address');
+        $primaryColor = $data['primaryColor'] ?? $request->request->get('primaryColor') ?? '#ffffff';
+
+        if (!$name) {
+            return $this->json(['message' => 'Name requis'], 400);
+        }
 
         $restaurant = new Restaurant();
         $restaurant->setName($name);
@@ -79,11 +88,9 @@ class RestaurantController extends AbstractController
         $restaurant->setUpdateAt(new \DateTime());
         $restaurant->setOwner($user);
 
-        // Génération slug
         $slug = strtolower($this->slugger->slug($restaurant->getName()));
         $restaurant->setSlug($slug);
 
-        // Upload image principale si fournie
         /** @var UploadedFile $file */
         $file = $request->files->get('image');
         if ($file) {
@@ -94,7 +101,10 @@ class RestaurantController extends AbstractController
         $this->em->persist($restaurant);
         $this->em->flush();
 
-        return $this->json(['message' => 'Restaurant créé', 'id' => $restaurant->getId()]);
+        return $this->json([
+            'message' => 'Restaurant créé',
+            'id' => $restaurant->getId()
+        ], 201);
     }
 
     //afficher restaurants 
