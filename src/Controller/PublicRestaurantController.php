@@ -16,11 +16,12 @@ class PublicRestaurantController extends AbstractController
 
         $data = [];
 
-        foreach ($restaurants as $r) {
-            $data = [
+        foreach ($restaurants as $restaurant) {
+            $data[] = [
+                'id'=>$restaurant->getId(),
                 'name'=>$restaurant->getName(),
                 'slug'=>$restaurant->getSlug(),
-                'image'=>$restaurant->getImage(),
+                'image'=>$restaurant->getLogo(),
                 'categories'=>[]
             ];
         }
